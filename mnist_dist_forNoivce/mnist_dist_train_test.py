@@ -40,11 +40,13 @@ def main(_):
     server.join()
   elif FLAGS.job_name == "worker":
     is_chief = (FLAGS.task_index == 0)
+    workers_number = len(FLAGS.worker_hosts)
     mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
 
     # Assigns ops to the local worker by default.
     with tf.device(tf.train.replica_device_setter(worker_device="/job:worker/task:%d" % FLAGS.task_index, cluster=cluster)):
       # Variables of the hidden layer
+      #tf.truncated_normal: Outputs random values from a truncated normal distribution.
       hid_w = tf.Variable(tf.truncated_normal([IMAGE_PIXELS * IMAGE_PIXELS, FLAGS.hidden_units], stddev=1.0 / IMAGE_PIXELS), name="hid_w")
       hid_b = tf.Variable(tf.zeros([FLAGS.hidden_units]), name="hid_b")
 
@@ -55,10 +57,15 @@ def main(_):
       x = tf.placeholder(tf.float32, [None, IMAGE_PIXELS * IMAGE_PIXELS])
       y_ = tf.placeholder(tf.float32, [None, 10])
 
-      hid_lin = tf.nn.xw_plus_b(x, hid_w, hid_b)
+      #tf.nn.xw_plus_b(x, w, b) equals to tf.matmul(x, w)+b
+      #hid_lin = tf.nn.xw_plus_b(x, hid_w, hid_b)
+      hid_lin = tf.matmul(x, hid_w) + hid_b
+      #tf.nn.relu(features): max(features, 0), https://en.wikipedia.org/wiki/Rectifier_(neural_networks)
       hid = tf.nn.relu(hid_lin)
 
-      y = tf.nn.softmax(tf.nn.xw_plus_b(hid, sm_w, sm_b))
+      y = tf.nn.softmax(tf.matmul(hid, sm_w)+sm_b)
+      #y = tf.nn.softmax(tf.nn.xw_plus_b(hid, sm_w, sm_b))
+      #tf.clip_by_value(t, clip_value_min, clip_value_max): Clips tensor values to a specified min and max.
       loss = -tf.reduce_sum(y_ * tf.log(tf.clip_by_value(y, 1e-10, 1.0)))
 
       global_step = tf.Variable(0)
@@ -82,7 +89,7 @@ def main(_):
                              global_step=global_step,
                              save_model_secs=60)
 
-							 # The supervisor takes care of session initialization, restoring from a checkpoint, and closing when done or an error occurs.
+    # The supervisor takes care of session initialization, restoring from a checkpoint, and closing when done or an error occurs.
     sess_config = tf.ConfigProto(allow_soft_placement=True, log_device_placement=True)
     sess = sv.prepare_or_wait_for_session(master=server.target, config=sess_config)
     time_begin = time.time()
@@ -110,7 +117,7 @@ def main(_):
 
       local_step+=1
 
-      if val_xent < 500:
+      if val_xent < 200 or local_step > 10000000/workers_number:
         break
 
     time_end = time.time()
