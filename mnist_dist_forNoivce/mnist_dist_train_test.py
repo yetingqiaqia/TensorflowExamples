@@ -117,7 +117,7 @@ def main(_):
 
       local_step+=1
 
-      if val_xent < 200 or local_step > 200000/workers_number:
+      if val_xent < 340 or local_step > 200000/workers_number:
         break
 
     time_end = time.time()
